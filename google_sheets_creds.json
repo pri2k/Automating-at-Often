@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "halogen-brace-420206",
+  "private_key_id": "1c1538e8c0b4f588bb4e82b9ca3ba5d82f3eddd0",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCxMM4fDxgCM4tW\nmTH5af+oxkhsiaYfxmAz9U9e7+Z2X8Kn7GlHBBAzv8j/cFApbV+SNr9wMDcyo6yS\nE3LLntC6yXkpSg6Y1rAPWBbHZg32t5bzQ2f5sKT7HbKopVoQ0T5Fqu5IwQDsJ0eV\nx3mRjPhRUANgt6wiwhhw/FlxKbyyfbR894BNAvJ20af/LXQE7pJymRu6XNo4biCe\nnAc5XQQeSRpSq5D2sy5dNFB8a+HtsdUJzKvQorlTJZTvVl8KpZPlO3tvlmtt/Oe4\nAk/sSpnudMy25dRwssf+/vICWBXGAXdIfcI4qM7eMo2og2rkwR+vDBMTZKsrDiFR\nDBtOkc1fAgMBAAECggEAAt4ud+LRUnCwK+v74eZ1TqYDYoV0RiS4IGsD4Wo74BlG\nwp4SJF7Hua/iKdf0kKQgZrBm034tLaXU+7xu7EK1M4ApYblnpqI7OaWJ3sWs1V57\nCrAu+xWwQJRmU26JHSv5+so+zFlTXXWo2hDMUGeqq3bXxo9+V2JFvkKQPkN2+KC7\nHGXtBz7KxkclPonEVTinRT0dSLjeYf/49PbFxa73njo41aBYmNPn9f+PPLVhKPqH\ndEJyE7QdPeTkfGRgTI1q0opJ71UUJSLFyMLwpKyrAQPGIo8Lkq2etba6WwARKzNE\nUQarBslWdLIwfU9lQw/w+ENd6kwFM8g6xr2jO+twAQKBgQDdy1mnn4wAjvhGbxv1\n3QSecmhNrK1izsb24EnVeOf4DqNJxC2CFn47Z/0wXnacP+gmVAEWuLH1Mn60nJkd\n6R/cWfeWDC8vXOF0DnaUQ6r/BuVWAAmlHf64wbUBeKSA5vthqY/hRLyj5v+QzKb0\n05FUkdSgk6c/yctKbdkxgPLonwKBgQDMhHWHaWVwQMVwNX3HVrFOnCoweHbVU3QJ\nOz1wrSZ3klmZPuearWv2kwHNyC2QKGR3FTrAFnJBEYyPENClKV4JpVkOHUbuhJGF\nwlPU/oKmeeAdqOGkLk3A63VByIt11aiGbRUo7rjGeGbwQElkKz9Eah022k2O5VAz\nqvcDYokjQQKBgHL5OAeZwGSFuJQigtcH9J4CZqllSxg+YouVpxCfNXi0ddcGeCTI\nbjVzaZ+KSGglBL3hrBLQOYgG3gHYb9M+hwKeLKc+t7MQrdqQqM2g6mJ7e6UCLf3H\nN8UkvST/Gh+sHUH6ORionjVEyNSSEjY1+k9hrVx0Ti3V+KkjmoR7+O+3AoGBAK8S\nMJ2jHl+SQrFESRBr6Mn3KrJlXKxOjQUd/gFHZ6dx01s4mwAwtjvUKfYjBsXhnebG\neI1YaaPDxwPtC/5mRAaT0YEglMi3GO9co3CwEd06dRxOpiFqNcsQhEa0ypUrOeEg\n3b01ZV0YUl4VWf3ye20wPSPoif3p1Nb14g+2uNhBAoGBALlUO2GlBMP7O4B0uEek\nlNw1KeM5w+FsX/Wqd13jAQY/gJ9d6SBZh5tIqD2CtH03T04tcZb3ZYvNzIhc5UEN\ncxN2toab3ha4fZkV+kQHVoMIui9nFkDPeKMHf0SXBKn9kUbJi6hdSy1P6JnXmmec\nWdQkmq6E8dZd1Byh4AskuqYo\n-----END PRIVATE KEY-----\n",
+  "client_email": "sheets-access@halogen-brace-420206.iam.gserviceaccount.com",
+  "client_id": "100831871566926687414",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sheets-access%40halogen-brace-420206.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

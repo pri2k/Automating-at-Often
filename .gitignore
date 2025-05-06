@@ -1,2 +1,5 @@
 # Ignore all .json files
-*.json
+*.jsontest.py
+
+send_email.py
+test.py
