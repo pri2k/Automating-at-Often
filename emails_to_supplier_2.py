@@ -17,28 +17,33 @@ from google.auth.transport.requests import Request
 
 load_dotenv()
 
+# Load environment variables
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")  # Supplier Sheet
 SHEET_ID = os.getenv("SHEET_ID")  # Customer Sheet
 
+# Define API Scopes for Google Sheets and Gmail
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
+# File paths for credentials and token
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_PICKLE = 'token.pickle'
 
+# Sheet configuration
 SHEET_NAME = "CustomerEnquiry"
 SHEET_RANGE = f'{SHEET_NAME}!A2:L1000'
 STATUS_COLUMN = 'A'
-CHECK_INTERVAL_SECONDS = 30  # Polling interval
+CHECK_INTERVAL_SECONDS = 30  # Polling interval for new entries
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Setup: Google Services & Gemini
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_user_credentials():
+    """Retrieve or refresh user credentials for Google Sheets and Gmail APIs."""
     creds = None
     if os.path.exists(TOKEN_PICKLE):
         with open(TOKEN_PICKLE, 'rb') as token:
@@ -55,19 +60,21 @@ def get_user_credentials():
 
     return creds
 
+# Initialize credentials and services
 creds = get_user_credentials()
-
 sheets_service = build('sheets', 'v4', credentials=creds)
 gmail_service = build('gmail', 'v1', credentials=creds)
 
+# Initialize Gemini AI model for email generation
 genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers
+# Helper Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def column_index_to_letter(index):
+    """Convert a column index to an Excel-style column letter."""
     result = ''
     while index > 0:
         index, remainder = divmod(index - 1, 26)
@@ -75,10 +82,11 @@ def column_index_to_letter(index):
     return result
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Functions
+# Main Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_sheet_data(service):
+    """Fetch customer data from the Google Sheet and return it as a DataFrame."""
     result = service.spreadsheets().values().get(
         spreadsheetId=SHEET_ID,
         range=SHEET_RANGE
@@ -97,6 +105,7 @@ def fetch_sheet_data(service):
     return df, SHEET_RANGE
 
 def fetch_supplier_data():
+    """Fetch supplier data from the Google Sheet."""
     supplier_range = 'Supplier!B2:E'
     result = sheets_service.spreadsheets().values().get(
         spreadsheetId=GOOGLE_SHEET_ID,
@@ -110,6 +119,7 @@ def fetch_supplier_data():
     return pd.DataFrame(values, columns=["Supplier Name", "Email", "Country", "Destination"])
 
 def generate_email_for_supplier(supplier_name: str, customer_query: str) -> str:
+    """Generate a personalized email to the supplier requesting a quote for the customer."""
     prompt = f"""
     You are an assistant at a travel agency. A customer has requested a trip quote.
     Write a polite and professional email to the supplier requesting details and quotation.
@@ -123,6 +133,7 @@ def generate_email_for_supplier(supplier_name: str, customer_query: str) -> str:
     return response.text.strip()
 
 def send_gmail(to_email: str, subject: str, body: str):
+    """Send an email via Gmail API."""
     message = MIMEText(body)
     message['to'] = to_email
     message['subject'] = subject
@@ -133,6 +144,7 @@ def send_gmail(to_email: str, subject: str, body: str):
     ).execute()
 
 def mark_email_sent(sheet, row_index: int):
+    """Update the Google Sheet to mark the email as sent."""
     update_range = f"{SHEET_NAME}!{STATUS_COLUMN}{row_index + 2}"  # +2 for header and 1-indexing
     sheet.values().update(
         spreadsheetId=GOOGLE_SHEET_ID,
@@ -142,6 +154,7 @@ def mark_email_sent(sheet, row_index: int):
     ).execute()
 
 def process_new_entries():
+    """Process the customer requests and send emails to matching suppliers."""
     df, sheet_range = fetch_sheet_data(sheets_service)
     suppliers_df = fetch_supplier_data()
 
@@ -150,6 +163,7 @@ def process_new_entries():
         return
 
     for index, row in df.iterrows():
+        # Skip rows where email is already sent
         if row.get("Sent to Supplier", "").strip().lower() == "email sent":
             continue
 
@@ -157,6 +171,7 @@ def process_new_entries():
         customer_destination = row.get("Destination", "")
         customer_query = row.get("Query", "")
 
+        # Find a matching supplier based on country and destination
         matching_supplier = suppliers_df[
             (suppliers_df["Country"].str.contains(customer_country, case=False, na=False)) &
             (suppliers_df["Destination"].str.contains(customer_destination, case=False, na=False))
@@ -169,6 +184,7 @@ def process_new_entries():
         supplier_email = matching_supplier.iloc[0]["Email"]
         supplier_name = matching_supplier.iloc[0]["Supplier Name"]
 
+        # Ensure necessary data is available before sending an email
         if not supplier_email or not customer_query:
             print(f"⚠️ Missing data in row {index + 2}. Skipping.")
             continue
@@ -184,10 +200,11 @@ def process_new_entries():
             print(f"❌ Error sending email to {supplier_email}: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Entrypoint
+# Main Execution Loop
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
+    """Main function to monitor Google Sheets and send emails based on new entries."""
     print("📡 Monitoring Google Sheet for new supplier requests...")
     while True:
         process_new_entries()
