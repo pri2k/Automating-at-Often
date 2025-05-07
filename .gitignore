@@ -1,5 +1,6 @@
 # Ignore all .json files
 *.json
+*.pickle
 
 send_email.py
 test.py
@@ -20,3 +21,4 @@ env/
 # 💻 MacOS & system files
 .DS_Store
 Thumbs.db
+token.pickle
