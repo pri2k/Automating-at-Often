@@ -36,7 +36,7 @@ TOKEN_PICKLE = 'token.pickle'
 SHEET_NAME = "CustomerEnquiry"
 SHEET_RANGE = f'{SHEET_NAME}!A1:L1000'
 STATUS_COLUMN = 'A'
-CHECK_INTERVAL_SECONDS = 30  # Polling interval for new entries
+CHECK_INTERVAL_SECONDS = 10  # Polling interval for new entries
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Setup: Google Services & Gemini
@@ -162,19 +162,54 @@ def fetch_supplier_data():
 
 
 
-def generate_email_for_supplier(supplier_name: str, customer_query: str) -> str:
-    """Generate a personalized email to the supplier requesting a quote for the customer."""
+def generate_email_for_supplier(supplier_name: str, customer_data: dict) -> str:
+    """Generate a personalized, conversational email to the supplier using Gemini."""
+    
+    # Extract all customer data
+    country = customer_data.get("Country", "N/A")
+    destination = customer_data.get("Destination", "N/A")
+    lead_name = customer_data.get("Lead Passenger Name", "N/A")
+    adults = customer_data.get("Adults", "0")
+    children = customer_data.get("Children", "0")
+    accommodation = customer_data.get("Accommodation Type", "N/A")
+    checkin = customer_data.get("Checkin", "N/A")
+    checkout = customer_data.get("Checkout", "N/A")
+    nights = customer_data.get("Nights", "N/A")
+    activities = customer_data.get("Activities", "").strip()
+    query = customer_data.get("Query", "").strip()
+
+    # Build structured prompt for Gemini
     prompt = f"""
-    You are an assistant at a travel agency. A customer has requested a trip quote.
-    Write a polite and professional email to the supplier requesting details and quotation.
+    You are Priya, a Travel Consultant at Often. Write a friendly and professional email to a travel supplier named {supplier_name}, requesting a quote for a client trip.
 
-    Supplier Name: {supplier_name}
-    Customer Query: {customer_query}
-
-    Structure the email with a greeting, a clear explanation of the request, and a polite closing.
+    Include the following trip details naturally in the email:
+    - Country: {country}
+    - Destination: {destination}
+    - Lead Passenger Name: {lead_name}
+    - Number of Adults: {adults}
+    - Number of Children: {children}
+    - Accommodation Type: {accommodation}
+    - Check-in Date: {checkin}
+    - Check-out Date: {checkout}
+    - Number of Nights: {nights}
     """
+
+    if activities:
+        prompt += f"- Planned Activities: {activities}\n"
+
+    if query:
+        prompt += f"- Additional Client Notes: {query}\n"
+
+        prompt += """
+    Avoid using formatting like asterisks (**), bullet points, or markdown. 
+    Write in a natural, human tone as if you're composing this from your email inbox. 
+    End with a polite and professional closing from Priya, Travel Consultant, Often.
+    """
+
+    # Send to Gemini
     response = gemini_model.generate_content(prompt)
     return response.text.strip()
+
 
 
 def send_gmail(to_email: str, subject: str, body: str):
@@ -249,7 +284,7 @@ def process_new_entries():
             continue
 
         subject = "Quotation Request for Upcoming Travel Booking"
-        email_body = generate_email_for_supplier(supplier_name, customer_query)
+        email_body = generate_email_for_supplier(supplier_name, row.to_dict())
 
         try:
             send_gmail(supplier_email, subject, email_body)
