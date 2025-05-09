@@ -34,7 +34,7 @@ TOKEN_PICKLE = 'token.pickle'
 
 # Sheet configuration
 SHEET_NAME = "CustomerEnquiry"
-SHEET_RANGE = f'{SHEET_NAME}!A2:L1000'
+SHEET_RANGE = f'{SHEET_NAME}!A1:L1000'
 STATUS_COLUMN = 'A'
 CHECK_INTERVAL_SECONDS = 30  # Polling interval for new entries
 
@@ -94,29 +94,73 @@ def fetch_sheet_data(service):
 
     values = result.get("values", [])
     filtered_values = [row for row in values if any(cell.strip() for cell in row)]
-    num_columns = max(len(row) for row in filtered_values)
-    normalized_values = [row + [''] * (num_columns - len(row)) for row in filtered_values]
 
-    df = pd.DataFrame(normalized_values, columns=[
-        "Customer Name", "Country", "Destination", "Travel Dates", "Number of People",
-        "Accommodation Type", "Activities", "Query", "Sent to Supplier", "Supplier Email",
-        "Supplier Name", "Supplier Response"
-    ])
-    return df, SHEET_RANGE
+    if not filtered_values:
+        print("⚠️ No data found in the customer sheet.")
+        return pd.DataFrame(), SHEET_RANGE
 
-def fetch_supplier_data():
-    """Fetch supplier data from the Google Sheet."""
-    supplier_range = 'Supplier!B2:E'
-    result = sheets_service.spreadsheets().values().get(
-        spreadsheetId=GOOGLE_SHEET_ID,
-        range=supplier_range
-    ).execute()
+    headers = filtered_values[0]  # First row as header
+    data_rows = filtered_values[1:]  # Remaining rows
+
+    num_columns = len(headers)
+
+    normalized_rows = [
+        row[:num_columns] + [''] * (num_columns - len(row))
+        if len(row) != num_columns else row
+        for row in data_rows
+    ]
+
+    df = pd.DataFrame(normalized_rows, columns=headers)
+
+
+    print("\n📄 Customer Sheet Data Preview:")
+    print(df.head())  
+    print("\n📊 Customer Sheet Columns:")
+    print(df.columns.tolist())
+    # print(f"📦 sheet_data type: {type(df)}")  # Prints the type of the object
+    # print(f"📦 sheet_data: {df}")  # Prints the whole result to check its structure
 
     values = result.get('values', [])
-    if not values:
-        return pd.DataFrame()
 
-    return pd.DataFrame(values, columns=["Supplier Name", "Email", "Country", "Destination"])
+    return df, SHEET_RANGE
+
+
+
+def fetch_supplier_data():
+    sheet_id = os.getenv("SHEET_ID")
+    sheet_range = "Supplier!A1:E"  
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range=sheet_range
+    ).execute()
+
+    values = result.get("values", [])
+
+    if not values:
+        print("⚠️ No data found in the supplier sheet.")
+        return pd.DataFrame(), sheet_range
+
+    headers = values[0]
+    data_rows = values[1:]
+
+    num_columns = len(headers)
+
+    normalized_rows = [
+        row[:num_columns] + [''] * (num_columns - len(row))
+        if len(row) != num_columns else row
+        for row in data_rows
+    ]
+
+    df = pd.DataFrame(normalized_rows, columns=headers)
+
+    print("\n📄 Supplier Sheet Data Preview:")
+    print(df)
+
+    print("\n📊 Supplier Sheet Columns:")
+    print(df.columns.tolist())
+
+    return df, sheet_range
+
+
 
 def generate_email_for_supplier(supplier_name: str, customer_query: str) -> str:
     """Generate a personalized email to the supplier requesting a quote for the customer."""
@@ -132,6 +176,7 @@ def generate_email_for_supplier(supplier_name: str, customer_query: str) -> str:
     response = gemini_model.generate_content(prompt)
     return response.text.strip()
 
+
 def send_gmail(to_email: str, subject: str, body: str):
     """Send an email via Gmail API."""
     message = MIMEText(body)
@@ -143,50 +188,64 @@ def send_gmail(to_email: str, subject: str, body: str):
         body={'raw': raw_message}
     ).execute()
 
-def mark_email_sent(sheet, row_index: int):
+
+def mark_email_sent(sheets_service, row_index: int):
     """Update the Google Sheet to mark the email as sent."""
-    update_range = f"{SHEET_NAME}!{STATUS_COLUMN}{row_index + 2}"  # +2 for header and 1-indexing
-    sheet.values().update(
+    update_range = f"{SHEET_NAME}!A{row_index + 2}"  # 'Sent to Supplier' is in column A
+    timestamp_range = f"{SHEET_NAME}!B{row_index + 2}"  # 'Email Sent Timestamp' is in column B
+
+    from datetime import datetime
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Update both status and timestamp
+    sheets_service.spreadsheets().values().batchUpdate(  #
         spreadsheetId=GOOGLE_SHEET_ID,
-        range=update_range,
-        valueInputOption="USER_ENTERED",
-        body={"values": [["Email Sent"]]}
+        body={
+            "valueInputOption": "USER_ENTERED",
+            "data": [
+                {"range": update_range, "values": [["Email Sent"]]},
+                {"range": timestamp_range, "values": [[now]]}
+            ]
+        }
     ).execute()
+
+
 
 def process_new_entries():
     """Process the customer requests and send emails to matching suppliers."""
     df, sheet_range = fetch_sheet_data(sheets_service)
-    suppliers_df = fetch_supplier_data()
+    suppliers_df, _ = fetch_supplier_data()
 
     if df.empty:
-        print("No data found in sheet.")
+        print("❌ No customer data found.")
         return
 
     for index, row in df.iterrows():
-        # Skip rows where email is already sent
         if row.get("Sent to Supplier", "").strip().lower() == "email sent":
             continue
 
-        customer_country = row.get("Country", "")
-        customer_destination = row.get("Destination", "")
-        customer_query = row.get("Query", "")
+        customer_country = row.get("Country", "").strip()
+        customer_destination = row.get("Destination", "").strip()
+        customer_query = row.get("Query", "").strip()
 
-        # Find a matching supplier based on country and destination
+        if not customer_country or not customer_destination:
+            print(f"⚠️ Missing critical data in row {index + 2}. Skipping.")
+            continue
+
         matching_supplier = suppliers_df[
             (suppliers_df["Country"].str.contains(customer_country, case=False, na=False)) &
             (suppliers_df["Destination"].str.contains(customer_destination, case=False, na=False))
         ]
 
         if matching_supplier.empty:
-            print(f"❌ No matching supplier found for {customer_destination}, {customer_country}")
+            print(f"❌ No matching supplier for {customer_destination}, {customer_country} in row {index + 2}")
             continue
 
         supplier_email = matching_supplier.iloc[0]["Email"]
         supplier_name = matching_supplier.iloc[0]["Supplier Name"]
 
-        # Ensure necessary data is available before sending an email
-        if not supplier_email or not customer_query:
-            print(f"⚠️ Missing data in row {index + 2}. Skipping.")
+        if not supplier_email:
+            print(f"⚠️ Missing supplier email for row {index + 2}. Skipping.")
             continue
 
         subject = "Quotation Request for Upcoming Travel Booking"
@@ -195,9 +254,9 @@ def process_new_entries():
         try:
             send_gmail(supplier_email, subject, email_body)
             mark_email_sent(sheets_service, index)
-            print(f"✅ Email sent to {supplier_email}")
+            print(f"✅ Email sent to {supplier_email} for row {index + 2}")
         except Exception as e:
-            print(f"❌ Error sending email to {supplier_email}: {e}")
+            print(f"❌ Error sending email to {supplier_email} in row {index + 2}: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main Execution Loop
