@@ -3,6 +3,7 @@
 *.pickle
 
 send_email.py
+Emails to Supplier/emails_to_supplier.py
 test.py
 
 .env
