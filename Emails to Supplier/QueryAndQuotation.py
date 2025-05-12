@@ -34,7 +34,7 @@ TOKEN_PICKLE = 'token.pickle'
 
 # Sheet configuration
 SHEET_NAME = "CustomerEnquiry"
-SHEET_RANGE = f'{SHEET_NAME}!A1:L1000'
+SHEET_RANGE = f'{SHEET_NAME}!A1:N1000'
 STATUS_COLUMN = 'A'
 CHECK_INTERVAL_SECONDS = 10  # Polling interval for new entries
 
@@ -113,10 +113,10 @@ def fetch_sheet_data(service):
     df = pd.DataFrame(normalized_rows, columns=headers)
 
 
-    print("\n📄 Customer Sheet Data Preview:")
-    print(df.head())  
-    print("\n📊 Customer Sheet Columns:")
-    print(df.columns.tolist())
+    # print("\n📄 Customer Sheet Data Preview:")
+    # print(df.head())  
+    # print("\n📊 Customer Sheet Columns:")
+    # print(df.columns.tolist())
     # print(f"📦 sheet_data type: {type(df)}")  # Prints the type of the object
     # print(f"📦 sheet_data: {df}")  # Prints the whole result to check its structure
 
@@ -152,20 +152,20 @@ def fetch_supplier_data():
 
     df = pd.DataFrame(normalized_rows, columns=headers)
 
-    print("\n📄 Supplier Sheet Data Preview:")
-    print(df)
+    # print("\n📄 Supplier Sheet Data Preview:")
+    # print(df)
 
-    print("\n📊 Supplier Sheet Columns:")
-    print(df.columns.tolist())
+    # print("\n📊 Supplier Sheet Columns:")
+    # print(df.columns.tolist())
 
     return df, sheet_range
 
 
 
 def generate_email_for_supplier(supplier_name: str, customer_data: dict) -> str:
-    """Generate a personalized, conversational email to the supplier using Gemini."""
+    """Generate an email to the supplier using Gemini, with customer data extracted directly."""
     
-    # Extract all customer data
+    # Extract customer data from the provided dictionary
     country = customer_data.get("Country", "N/A")
     destination = customer_data.get("Destination", "N/A")
     lead_name = customer_data.get("Lead Passenger Name", "N/A")
@@ -175,49 +175,78 @@ def generate_email_for_supplier(supplier_name: str, customer_data: dict) -> str:
     checkin = customer_data.get("Checkin", "N/A")
     checkout = customer_data.get("Checkout", "N/A")
     nights = customer_data.get("Nights", "N/A")
-    activities = customer_data.get("Activities", "").strip()
-    query = customer_data.get("Query", "").strip()
+    activities = customer_data.get("Activities", "Not specified").strip()
+    query = customer_data.get("Query", "No additional query provided").strip()
+    wants_quote = customer_data.get("Quote", "").strip().lower() == "yes"
+
+    with open("email_examples.txt", "r") as f:
+        content = f.read()
+
 
     # Build structured prompt for Gemini
     prompt = f"""
-    You are Priya, a Travel Consultant at Often. Write a friendly and professional email to a travel supplier named {supplier_name}, requesting a quote for a client trip.
+    You are Priya, a Travel Consultant at Often. Write a friendly and professional email to a travel supplier named {supplier_name}. This is for a customer trip inquiry. You must not use Markdown or asterisks for formatting — instead, use HTML tags like <b> for emphasis.
+
 
     Include the following trip details naturally in the email:
     - Country: {country}
     - Destination: {destination}
-    - Lead Passenger Name: {lead_name}
+    - Passenger Name: {lead_name}
     - Number of Adults: {adults}
     - Number of Children: {children}
     - Accommodation Type: {accommodation}
     - Check-in Date: {checkin}
     - Check-out Date: {checkout}
     - Number of Nights: {nights}
-    """
 
-    if activities:
-        prompt += f"- Planned Activities: {activities}\n"
+    If there are any activities, mention them like this: {activities}
+    If there is a query, please highlight it like this: <b>{query}</b>
 
-    if query:
-        prompt += f"- Additional Client Notes: {query}\n"
+    Here are some example emails (with formatting):
+    {content}
 
-        prompt += """
-    Avoid using formatting like asterisks (**), bullet points, or markdown. 
-    Write in a natural, human tone as if you're composing this from your email inbox. 
-    End with a polite and professional closing from Priya, Travel Consultant, Often.
-    """
+    """    
 
-    # Send to Gemini
+    if wants_quote:
+        prompt += "Ask the supplier for a detailed quotation for this trip, including accommodation options, activities (if any), and a price breakdown.\n"
+    else:
+        prompt += "Do not ask the supplier for quotation. Do not ask about money or price breakdown."
+
+    prompt += "Now, based on this information, generate an email in HTML format (no Markdown)."
+
+    # Send the structured prompt to Gemini and get the response
+    # print("Prompt is")
+    # print(prompt)
     response = gemini_model.generate_content(prompt)
-    return response.text.strip()
+    print("Response is")
+    print(response)
+
+    raw_text = response.text
+
+    print(raw_text)
+
+    if raw_text.startswith("```html"):
+        raw_text = raw_text[len("```html\n"):]
+    if raw_text.endswith("```"):
+        raw_text = raw_text[:-3]
+
+    clean_email_html = raw_text.strip()
+
+    print(clean_email_html)
+
+    return clean_email_html
 
 
 
 def send_gmail(to_email: str, subject: str, body: str):
-    """Send an email via Gmail API."""
-    message = MIMEText(body)
-    message['to'] = to_email
-    message['subject'] = subject
+    """Send an HTML email via Gmail API."""
+    message = MIMEText(body, 'html')
+    message['To'] = to_email
+    message['From'] = "me"  
+    message['Subject'] = subject
+
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
     gmail_service.users().messages().send(
         userId="me",
         body={'raw': raw_message}
@@ -226,14 +255,14 @@ def send_gmail(to_email: str, subject: str, body: str):
 
 def mark_email_sent(sheets_service, row_index: int):
     """Update the Google Sheet to mark the email as sent."""
-    update_range = f"{SHEET_NAME}!A{row_index + 2}"  # 'Sent to Supplier' is in column A
-    timestamp_range = f"{SHEET_NAME}!B{row_index + 2}"  # 'Email Sent Timestamp' is in column B
+    update_range = f"{SHEET_NAME}!A{row_index + 2}"  
+    timestamp_range = f"{SHEET_NAME}!B{row_index + 2}"  
 
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Update both status and timestamp
-    sheets_service.spreadsheets().values().batchUpdate(  #
+    sheets_service.spreadsheets().values().batchUpdate(  
         spreadsheetId=GOOGLE_SHEET_ID,
         body={
             "valueInputOption": "USER_ENTERED",
