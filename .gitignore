@@ -3,8 +3,9 @@
 *.pickle
 
 send_email.py
-Emails to Supplier/emails_to_supplier.py
+emails_to_supplier.py
 test.py
+email_examples.txt
 
 .env
 service_account.json

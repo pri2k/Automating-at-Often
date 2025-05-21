@@ -6,6 +6,7 @@ import pandas as pd
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 import google.generativeai as genai
+from datetime import datetime
 
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -19,8 +20,7 @@ load_dotenv()
 
 # Load environment variables
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")  # Supplier Sheet
-SHEET_ID = os.getenv("SHEET_ID")  # Customer Sheet
+SHEET_ID = os.getenv("SHEET_ID")  
 
 # Define API Scopes for Google Sheets and Gmail
 SCOPES = [
@@ -34,7 +34,7 @@ TOKEN_PICKLE = 'token.pickle'
 
 # Sheet configuration
 SHEET_NAME = "CustomerEnquiry"
-SHEET_RANGE = f'{SHEET_NAME}!A1:N1000'
+SHEET_RANGE = f'{SHEET_NAME}!A1:P1000'
 STATUS_COLUMN = 'A'
 CHECK_INTERVAL_SECONDS = 10  # Polling interval for new entries
 
@@ -188,19 +188,18 @@ def generate_email_for_supplier(supplier_name: str, customer_data: dict) -> str:
     You are Priya, a Travel Consultant at Often. Write a friendly and professional email to a travel supplier named {supplier_name}. This is for a customer trip inquiry. You must not use Markdown or asterisks for formatting — instead, use HTML tags like <b> for emphasis.
 
 
-    Include the following trip details naturally in the email:
+    Here are the key details you must naturally include in the email:
+
+    - Guest Name: {lead_name}
     - Country: {country}
     - Destination: {destination}
-    - Passenger Name: {lead_name}
-    - Number of Adults: {adults}
-    - Number of Children: {children}
-    - Accommodation Type: {accommodation}
     - Check-in Date: {checkin}
-    - Check-out Date: {checkout}
-    - Number of Nights: {nights}
-
-    If there are any activities, mention them like this: {activities}
-    If there is a query, please highlight it like this: <b>{query}</b>
+    - Accommodation Type: {accommodation}
+    - Number of Adults: {adults}
+    - Number of Children: {children} (mention only if > 0)
+    
+    If any activities are there, mention them like this: {activities} if it is N/A DO NOT MENTION
+    If there is a query, please highlight it like this and ask those queries in a natural human language: <b>{query}</b> if it is N/A DO NOT MENTION
 
     Here are some example emails (with formatting):
     {content}
@@ -218,12 +217,12 @@ def generate_email_for_supplier(supplier_name: str, customer_data: dict) -> str:
     # print("Prompt is")
     # print(prompt)
     response = gemini_model.generate_content(prompt)
-    print("Response is")
-    print(response)
+    # print("Response is")
+    # print(response)
 
     raw_text = response.text
 
-    print(raw_text)
+    # print(raw_text)
 
     if raw_text.startswith("```html"):
         raw_text = raw_text[len("```html\n"):]
@@ -232,7 +231,7 @@ def generate_email_for_supplier(supplier_name: str, customer_data: dict) -> str:
 
     clean_email_html = raw_text.strip()
 
-    print(clean_email_html)
+    # print(clean_email_html)
 
     return clean_email_html
 
@@ -263,7 +262,7 @@ def mark_email_sent(sheets_service, row_index: int):
 
     # Update both status and timestamp
     sheets_service.spreadsheets().values().batchUpdate(  
-        spreadsheetId=GOOGLE_SHEET_ID,
+        spreadsheetId=SHEET_ID,
         body={
             "valueInputOption": "USER_ENTERED",
             "data": [
@@ -273,7 +272,154 @@ def mark_email_sent(sheets_service, row_index: int):
         }
     ).execute()
 
+def confirm_checkin_email_sent(sheets_service, row_index: int):
+    """Update the Google Sheet to mark the email as sent."""
+    update_range = f"{SHEET_NAME}!D{row_index + 2}"  
 
+    # Update both status and timestamp
+    sheets_service.spreadsheets().values().batchUpdate(  
+        spreadsheetId=SHEET_ID,
+        body={
+            "valueInputOption": "USER_ENTERED",
+            "data": [
+                {"range": update_range, "values": [["Email Sent"]]},
+            ]
+        }
+    ).execute()
+
+def generate_email_for_checkin(supplier_name: str, customer_data: dict) -> str:
+    """Generate an email to the supplier using Gemini, with customer data extracted directly."""
+    
+    # Extract customer data from the provided dictionary
+    country = customer_data.get("Country", "N/A")
+    destination = customer_data.get("Destination", "N/A")
+    lead_name = customer_data.get("Lead Passenger Name", "N/A")
+    adults = customer_data.get("Adults", "0")
+    children = customer_data.get("Children", "0")
+    accommodation = customer_data.get("Accommodation Type", "N/A")
+    checkin = customer_data.get("Checkin", "N/A")
+    checkout = customer_data.get("Checkout", "N/A")
+    nights = customer_data.get("Nights", "N/A")
+    activities = customer_data.get("Activities", "N/A").strip()
+    query = customer_data.get("Query", "N/A").strip()
+
+    print("Query is")
+    print(query)
+    print("Activities are")
+    print(activities)
+
+
+    # Build structured prompt for Gemini
+   # Build structured prompt for Gemini
+    prompt = f"""
+    You are Priya, a Travel Concierge at Often.club. Write a warm, professional email to a travel supplier named {supplier_name}. The purpose of this email is to coordinate a special check-in experience for a Luxe member staying at their property.
+
+    Do not use Markdown or asterisks for formatting — instead, use HTML tags like <b> and <i> if emphasis is needed. Maintain a polite and courteous tone.
+
+    Here are the key details you must naturally include in the email:
+
+    - Guest Name: {lead_name}
+    - Country: {country}
+    - Destination: {destination}
+    - Check-in Date: {checkin}
+    - Accommodation Type: {accommodation}
+    - Number of Adults: {adults}
+    - Number of Children: {children} (mention only if > 0)
+    - Special occasion or customer query: <b>{query}</b> (if N/A DO NOT MENTION)
+    - Requested activities or support: {activities} (if N/A DO NOT MENTION)
+
+    The email should:
+    - Briefly introduce yourself and the Often.club concierge service
+    - Mention that this is a Luxe-tier member
+    - Kindly ask the supplier to help enhance the guest's stay by arranging appropriate welcome gestures or setup
+    - Express gratitude and willingness to provide more information if needed
+
+    Now, based on this information, generate a professional, human-sounding email in HTML format (not Markdown).
+    """
+
+
+    prompt += "Now, based on this information, generate an email in HTML format (no Markdown)."
+
+    # print("Prompt is")
+    # print(prompt)
+    response = gemini_model.generate_content(prompt)
+    # print("Response is")
+    # print(response)
+
+    raw_text = response.text
+
+    # print(raw_text)
+
+    if raw_text.startswith("```html"):
+        raw_text = raw_text[len("```html\n"):]
+    if raw_text.endswith("```"):
+        raw_text = raw_text[:-3]
+
+    clean_email_html = raw_text.strip()
+
+    # print(clean_email_html)
+
+    return clean_email_html
+
+
+
+def process_old_queries():
+    df, sheet_range = fetch_sheet_data(sheets_service)
+    suppliers_df, _ = fetch_supplier_data()
+    
+    today = datetime.now().date()
+
+    for index, row in df.iterrows():
+        status = row.get("Confirm Checkin", "").strip().lower()
+        if status in ["email sent"]:
+            continue
+
+        scheduled_date_str = row.get("Scheduled Date", "").strip()
+        scheduled_date = None
+
+        if scheduled_date_str:
+            try:
+                scheduled_date = datetime.strptime(scheduled_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                print(f"⚠️ Invalid scheduled date format in row {index + 2}: {scheduled_date_str}. Skipping.")
+                continue
+        
+        scheduled_date = datetime.strptime(scheduled_date_str, "%Y-%m-%d").date()
+        
+        customer_country = row.get("Country", "").strip()
+        customer_destination = row.get("Destination", "").strip()
+        customer_query = row.get("Query", "").strip()
+
+        if not customer_country or not customer_destination:
+            print(f"⚠️ Missing critical data in row {index + 2}. Skipping.")
+            continue
+
+        matching_supplier = suppliers_df[
+            (suppliers_df["Country"].str.contains(customer_country, case=False, na=False)) &
+            (suppliers_df["Destination"].str.contains(customer_destination, case=False, na=False))
+        ]
+
+        if matching_supplier.empty:
+            print(f"❌ No matching supplier for {customer_destination}, {customer_country} in row {index + 2}")
+            continue
+
+        supplier_email = matching_supplier.iloc[0]["Email"]
+        supplier_name = matching_supplier.iloc[0]["Supplier Name"]
+
+        if not supplier_email:
+            print(f"⚠️ Missing supplier email for row {index + 2}. Skipping.")
+            continue
+
+        subject = "Upcoming Guest Check-in: Coordination Request"
+        email_body = generate_email_for_checkin(supplier_name, row.to_dict())
+
+        try:
+            if scheduled_date and scheduled_date == today:
+                send_gmail(supplier_email, subject, email_body)
+                confirm_checkin_email_sent(sheets_service, index)
+                print(f"☑️ Email sent to {supplier_email} for row {index + 2}")
+        except Exception as e:
+            print(f"❌ Error sending/scheduling email to {supplier_email} in row {index + 2}: {e}")
 
 def process_new_entries():
     """Process the customer requests and send emails to matching suppliers."""
@@ -283,10 +429,21 @@ def process_new_entries():
     if df.empty:
         print("❌ No customer data found.")
         return
+    
 
     for index, row in df.iterrows():
-        if row.get("Sent to Supplier", "").strip().lower() == "email sent":
+        status = row.get("Sent to Supplier", "").strip().lower()
+        if status in ["email sent"]:
             continue
+
+        scheduled_date_str = row.get("Scheduled Date", "").strip()
+        scheduled_date = None
+        if scheduled_date_str:
+            try:
+                scheduled_date = datetime.strptime(scheduled_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                print(f"⚠️ Invalid scheduled date format in row {index + 2}: {scheduled_date_str}. Skipping.")
+                continue
 
         customer_country = row.get("Country", "").strip()
         customer_destination = row.get("Destination", "").strip()
@@ -312,7 +469,7 @@ def process_new_entries():
             print(f"⚠️ Missing supplier email for row {index + 2}. Skipping.")
             continue
 
-        subject = "Quotation Request for Upcoming Travel Booking"
+        subject = "Request for Upcoming Travel Booking"
         email_body = generate_email_for_supplier(supplier_name, row.to_dict())
 
         try:
@@ -320,7 +477,7 @@ def process_new_entries():
             mark_email_sent(sheets_service, index)
             print(f"✅ Email sent to {supplier_email} for row {index + 2}")
         except Exception as e:
-            print(f"❌ Error sending email to {supplier_email} in row {index + 2}: {e}")
+            print(f"❌ Error sending/scheduling email to {supplier_email} in row {index + 2}: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main Execution Loop
@@ -331,6 +488,8 @@ def main():
     print("📡 Monitoring Google Sheet for new supplier requests...")
     while True:
         process_new_entries()
+        time.sleep(10)
+        process_old_queries()
         time.sleep(CHECK_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
