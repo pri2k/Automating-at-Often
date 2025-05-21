@@ -9,6 +9,7 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 import pickle
 from google_auth_oauthlib.flow import InstalledAppFlow
+import google.generativeai as genai
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Load Environment Variables and Google Sheets Setup
@@ -18,6 +19,8 @@ load_dotenv()
 
 SPREADSHEET_ID = os.getenv("SHEET_ID")
 RANGE_NAME = "CustomerEnquiry!A1:R1000"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -27,6 +30,9 @@ SCOPES = [
 
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_PICKLE = 'token.pickle'
+
+genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 def get_user_credentials():
     """Retrieve or refresh user credentials for Google Sheets and Gmail APIs."""
@@ -84,6 +90,32 @@ def fetch_sheet_data():
 
     return df
 
+def replyToQuery(query: str, answer: str) -> str:
+    """Write a proper answer to the query given the data"""
+    
+    # Build structured prompt for Gemini
+    prompt = (
+        f"""You are a research assistant for a travel company. 
+        You need to answer queries that customers have. 
+        I will provide you with a query and a researched answer. 
+        Your task is to rewrite it clearly and professionally, keeping all useful information like phone numbers, addresses, links, and important facts. 
+        \n\nQuery:\n{query}
+        \n\nResearched Answer:\n{answer}
+        \n\nRewritten Response:
+
+        \n\n Make sure you only return the Rewritten response and nothing else.
+        """
+    )
+
+
+    response = gemini_model.generate_content(prompt)
+    # print("Response is")
+    # print(response)
+
+    finalAnswer = response.text
+
+    return finalAnswer
+
 
 def sync_sheet():
     try:
@@ -134,25 +166,27 @@ def sync_sheet():
             r = requests.post("http://localhost:8000/api/chat/stream", json=payload, stream=True)
 
             if r.status_code == 200:
-                print("----- RAW RESPONSE START -----")
+                # print("----- RAW RESPONSE START -----")
                 full_response = ""
                 for line in r.iter_lines(decode_unicode=True):
                     if line:
-                        print(line)
+                        # print(line)
                         if line.startswith("data: "):
                             json_str = line[6:]  # Strip off "data: "
-                            # try:
-                            data = json.loads(json_str)
-                            chunk = data.get("content", "")
-                            full_response += chunk
-                            # except json.JSONDecodeError:
-                            #     print("⚠️ Skipped invalid JSON data line:", line)
-                        # else:
-                            # print("⚠️ Skipped non-data line:", line)
-                print("----- RAW RESPONSE END -----")
+                            try:
+                                data = json.loads(json_str)
+                                chunk = data.get("content", "")
+                                full_response += chunk
+                            except json.JSONDecodeError:
+                                print("⚠️ Skipped invalid JSON data line:", line)
+                        else:
+                            print("⚠️ Skipped non-data line:", line)
+                # print("----- RAW RESPONSE END -----")
 
-                answer = full_response.strip()
-                print(f"✅ Final Answer: {answer}")
+                ans = full_response.strip()
+                print(f"✅ Answer: {ans}")
+
+                fullAns = replyToQuery(query, ans)
 
                 headers = df.columns.tolist()
                 answer_col_index = headers.index("Answer")  
@@ -160,7 +194,7 @@ def sync_sheet():
 
                 update_range = f"CustomerEnquiry!{column_letter}{index+2}"
                 body = {
-                    "values": [[answer]]
+                    "values": [[fullAns]]
                 }
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
