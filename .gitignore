@@ -24,3 +24,9 @@ env/
 .DS_Store
 Thumbs.db
 token.pickle
+
+# Ignore all files in the WebScrapingFlights directory
+WebScrapingFlights/
+
+Reminders/
+
